@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>A1C History</title>
+    <script src="fhir-client.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  </head>
+  <body>
+    <div id="patientInfo" style="width:200px;height:200px;background-color: coral;border:5px solid blue"></div>
+    
+    <h1 id="status">Retrieving  Data...</h1>
+    <div id="chart" style="width:600px;height:400px;"></div>
+   <div id="medicationInfo" style="width:200px;height:400px;background-color: coral;border:5px solid blue;"> </div>
+    <h1 id="statusC">Retrieving  Data...</h1>
+    <div id="chartC" style="width:600px;height:400px;"></div>
+
+    <div id="statusDiv"></div>
+    
+    
+    <div id="immunizationInfo"> </div>
+  
+    
+
+    <script>
+      FHIR.oauth2.ready(getA1Cdata, showError);
+    
+      var statusDiv = document.getElementById("status");
+      var chartDiv = document.getElementById("chart");
+
+      var statusDivC = document.getElementById("statusC");
+      var chartDivC = document.getElementById("chartC");
+
+      function getA1Cdata(smart) {
+        
+        ////  Patient Demographic
+                //render current patient
+        smart.patient.read().then(
+          function(pt) {
+            var ptInfo =[];
+            ptInfo.push(pt.name[0].given[0]);
+            ptInfo.push(pt.name[0].family);
+            ptInfo.push(pt.birthDate);
+            //ptInfo.push(pt.address[0].line[0]);
+        
+            document.getElementById("patientInfo").innerText = JSON.stringify(ptInfo,null,4);
+          
+            },
+          function(error) {
+            document.getElementById("patientFN").innerText = error.stack;
+          }
+        );
+        
+        ////////////////
+        ////
+        
+        var maxItemCount=6;
+        var loincCode= "29463-7";
+        var graphName="Observation - Vital Sign (Body weight)";
+        var graphType= "bar";
+        
+        smart.patient.api
+          .search({
+            type: "Observation",
+            query: {
+               code:[loincCode],
+              "_sort:desc": "date",
+              _count: [maxItemCount]
+            }
+          })
+          .then(function(fhirObservations) {
+       
+            var dates = [];
+            var values = [];
+            (fhirObservations.data.entry || []).forEach(function(a1c) {
+              var date = a1c.resource.effectiveDateTime;
+              var value =
+                a1c.resource.valueQuantity && a1c.resource.valueQuantity.value;
+              if (date && value && dates.indexOf(date) == -1) {
+                dates.push(date);
+                values.push(Math.round(value * 10) / 10);
+              }
+            });
+           
+            if (values.length === 0)
+              return (statusDiv.innerHTML = "No A1C observations found.");
+           
+            //statusDiv.innerHTML=values.length;
+            statusDiv.style.display = "none";
+            
+            Plotly.newPlot(chartDiv, {
+              data: [
+                {
+                  x: dates,
+                  y: values,
+                  type: graphType
+                }
+              ],
+              layout: {
+                title: graphName, //"Observation - Vital Sign (Body weight)",
+                xaxis: { type: "date", tickformat: "%b %y" },
+                yaxis: { range: [0, 100] }
+              },
+              config: {
+                displayModeBar: false
+              }
+            });
+          });
+        /////////////
+        
+        smart.patient.api
+          .search({
+            type: "Observation",
+            query: {
+              code: "38483-4",
+              "_sort:desc": "date",
+              _count: 10
+            }
+          })
+          .then(function(fhirObservations) {
+            var dates = [];
+            var values = [];
+
+            (fhirObservations.data.entry || []).forEach(function(a1c) {
+              var date = a1c.resource.effectiveDateTime;
+              var value =
+                a1c.resource.valueQuantity && a1c.resource.valueQuantity.value;
+              if (date && value && dates.indexOf(date) == -1) {
+                dates.push(date);
+                values.push(Math.round(value * 10) / 10);
+              }
+            });
+
+            if (values.length === 0)
+              return (statusDivC.innerHTML =
+                "No Cretanine observations found.");
+
+            statusDivC.style.display = "none";
+
+            Plotly.newPlot(chartDivC, {
+              data: [
+                {
+                  x: dates,
+                  y: values,
+                  type: "scatter"
+                }
+              ],
+              layout: {
+                title: "Cretanine Lab Values",
+                xaxis: { type: "date", tickformat: "%b %y" },
+                yaxis: { range: [0, 10] }
+              },
+              config: {
+                displayModeBar: false
+              }
+            });
+          });
+        ////////////////
+
+        // get medication information
+     smart.patient.api
+          .search({
+            type: "MedicationRequest",  //MedicationRequest   in SMART app  , MedicationStatement in Cerner app
+            query: {
+              "_sort:desc": "date",
+              _count: 10
+            }
+          })
+          .then(function(fhirmed) {
+            var values = [];
+
+            (fhirmed.data.entry || []).forEach(function(med) {
+              var value = med.resource.medicationCodeableConcept.text;
+              values.push(value);
+              });
+         document.getElementById("medicationInfo").innerText = JSON.stringify(values ,null,4);
+       });
+        ////////////////
+        
+        
+        
+        
+        
+        
+        
+        
+        // get immunization information
+          smart.patient.api
+          .search({
+            type: "Immunization",  //MedicationRequest   in SMART app  , MedicationStatement in Cerner app
+            query: {
+              "_sort:desc": "date",
+              _count: 10
+            }
+          })
+          .then(function(fhirImm) {
+            //var values = [];
+
+            //(fhirmed.data.entry || []).forEach(function(fhirimm) {
+            //  var value = med.resource.medicationCodeableConcept.text;
+            //  values.push(value);
+            //  });
+         document.getElementById("immunizationInfo").innerText = JSON.stringify(fhirImm.data.entry ,null,4);
+       });
+        ///////////////
+      }
+
+      function showError(error) {
+        return (statusDiv.innerHTML =
+          "An error occurred connecting to the EHR");
+      }
+    </script>
+  </body>
+</html>
